@@ -1,121 +1,511 @@
-Creative Commons Legal Code
+from pygame import *
 
-CC0 1.0 Universal
+mixer.init()
+mixer.music.load("Statues.mp3")
+mixer.music.play(-1)
+mixer.music.set_volume(0.7)
+shot = mixer.Sound("spell_shot.wav")
+lose = mixer.Sound("lose.wav")
+win = mixer.Sound("win.wav")
+#клас-батько для інших спрайтів
+class GameSprite(sprite.Sprite):
+    #конструктор класу
+    def __init__(self, player_image, player_x, player_y, size_x, size_y):
+        # Викликаємо конструктор класу (Sprite):
+        sprite.Sprite.__init__(self)
+    
+        #кожен спрайт повинен зберігати властивість image - зображення
+        self.image = transform.scale(image.load(player_image), (size_x, size_y))
 
-    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
-    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
-    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
-    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
-    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
-    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
-    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
-    HEREUNDER.
+        #кожен спрайт повинен зберігати властивість rect - прямокутник, в який він вписаний
+        self.rect = self.image.get_rect()
+        self.rect.x = player_x
+        self.rect.y = player_y
+ 
+    #метод, що малює героя на вікні
+    def reset(self):
+        window.blit(self.image, (self.rect.x, self.rect.y))
 
-Statement of Purpose
+#клас головного гравця
+class Player(GameSprite):
+    #метод, у якому реалізовано управління спрайтом за кнопками стрілочкам клавіатури
+    def __init__(self, player_image, player_x, player_y, size_x, size_y, player_x_speed,player_y_speed):
+        # Викликаємо конструктор класу (Sprite):
+        GameSprite.__init__(self, player_image, player_x, player_y, size_x, size_y)
 
-The laws of most jurisdictions throughout the world automatically confer
-exclusive Copyright and Related Rights (defined below) upon the creator
-and subsequent owner(s) (each and all, an "owner") of an original work of
-authorship and/or a database (each, a "Work").
+        self.x_speed = player_x_speed
+        self.y_speed = player_y_speed
+    ''' переміщає персонажа, застосовуючи поточну горизонтальну та вертикальну швидкість'''
+    def update(self):  
+        # Спершу рух по горизонталі
+        if packman.rect.x <= win_width-60 and packman.x_speed > 0 or packman.rect.x >= 0 and packman.x_speed < 0:
+            self.rect.x += self.x_speed
+        # якщо зайшли за стінку, то встанемо впритул до стіни
+        platforms_touched = sprite.spritecollide(self, barriers, False)
+        if self.x_speed > 0: # йдемо праворуч, правий край персонажа - впритул до лівого краю стіни
+            for p in platforms_touched:
+                self.rect.right = min(self.rect.right, p.rect.left) # якщо торкнулися відразу кількох, то правий край - мінімальний із можливих
+        elif self.x_speed < 0: # йдемо ліворуч, ставимо лівий край персонажа впритул до правого краю стіни
+            for p in platforms_touched:
+                self.rect.left = max(self.rect.left, p.rect.right) # якщо торкнулися кількох стін, то лівий край - максимальний
+        if packman.rect.y <= win_height-60 and packman.y_speed > 0 or packman.rect.y >= 0 and packman.y_speed < 0:
+            self.rect.y += self.y_speed
+        # якщо зайшли за стінку, то встанемо впритул до стіни
+        platforms_touched = sprite.spritecollide(self, barriers, False)
+        if self.y_speed > 0: # йдемо вниз
+            for p in platforms_touched:
+                # Перевіряємо, яка з платформ знизу найвища, вирівнюємося по ній, запам'ятовуємо її як свою опору:
+                if p.rect.top < self.rect.bottom:
+                    self.rect.bottom = p.rect.top
+        elif self.y_speed < 0: # йдемо вгору
+            for p in platforms_touched:
+                self.rect.top = max(self.rect.top, p.rect.bottom) # вирівнюємо верхній край по нижніх краях стінок, на які наїхали
+    # метод "постріл" (використовуємо місце гравця, щоб створити там кулю)
+    def fire(self):
+        shot.play()
+        bullet = Bullet('bullet.png', self.rect.centerx, self.rect.top + 25, 50, 15, 30)
+        bullets.add(bullet)
 
-Certain owners wish to permanently relinquish those rights to a Work for
-the purpose of contributing to a commons of creative, cultural and
-scientific works ("Commons") that the public can reliably and without fear
-of later claims of infringement build upon, modify, incorporate in other
-works, reuse and redistribute as freely as possible in any form whatsoever
-and for any purposes, including without limitation commercial purposes.
-These owners may contribute to the Commons to promote the ideal of a free
-culture and the further production of creative, cultural and scientific
-works, or to gain reputation or greater distribution for their Work in
-part through the use and efforts of others.
+#клас спрайту-ворога
+class Enemy_h(GameSprite):
+    side = "left"
+    def __init__(self, player_image, player_x, player_y, size_x, size_y, player_speed, x1, x2):
+        # Викликаємо конструктор класу (Sprite):
+        GameSprite.__init__(self, player_image, player_x, player_y, size_x, size_y)
+        self.speed = player_speed
+        self.x1 =x1
+        self.x2 =x2
 
-For these and/or other purposes and motivations, and without any
-expectation of additional consideration or compensation, the person
-associating CC0 with a Work (the "Affirmer"), to the extent that he or she
-is an owner of Copyright and Related Rights in the Work, voluntarily
-elects to apply CC0 to the Work and publicly distribute the Work under its
-terms, with knowledge of his or her Copyright and Related Rights in the
-Work and the meaning and intended legal effect of CC0 on those rights.
+   #рух ворога
+    def update(self):
+        if self.rect.x <= self.x1: 
+            self.side = "right"
+        if self.rect.x >= self.x2:
+            self.side = "left"
+        if self.side == "left":
+            self.rect.x -= self.speed
+        else:
+            self.rect.x += self.speed
 
-1. Copyright and Related Rights. A Work made available under CC0 may be
-protected by copyright and related or neighboring rights ("Copyright and
-Related Rights"). Copyright and Related Rights include, but are not
-limited to, the following:
+class Enemy_v(GameSprite):
+    side = "up"
+    def __init__(self, player_image, player_x, player_y, size_x, size_y, player_speed, y1, y2):
+        # Викликаємо конструктор класу (Sprite):
+        GameSprite.__init__(self, player_image, player_x, player_y, size_x, size_y)
+        self.speed = player_speed
+        self.y1 =y1
+        self.y2 =y2
 
-  i. the right to reproduce, adapt, distribute, perform, display,
-     communicate, and translate a Work;
- ii. moral rights retained by the original author(s) and/or performer(s);
-iii. publicity and privacy rights pertaining to a person's image or
-     likeness depicted in a Work;
- iv. rights protecting against unfair competition in regards to a Work,
-     subject to the limitations in paragraph 4(a), below;
-  v. rights protecting the extraction, dissemination, use and reuse of data
-     in a Work;
- vi. database rights (such as those arising under Directive 96/9/EC of the
-     European Parliament and of the Council of 11 March 1996 on the legal
-     protection of databases, and under any national implementation
-     thereof, including any amended or successor version of such
-     directive); and
-vii. other similar, equivalent or corresponding rights throughout the
-     world based on applicable law or treaty, and any national
-     implementations thereof.
+   #рух ворога
+    def update(self):
+        if self.rect.y <= self.y1: #w1.wall_x + w1.wall_width
+            self.side = "down"
+        if self.rect.y >= self.y2:
+            self.side = "up"
+        if self.side == "up":
+            self.rect.y -= self.speed
+        else:
+            self.rect.y += self.speed
 
-2. Waiver. To the greatest extent permitted by, but not in contravention
-of, applicable law, Affirmer hereby overtly, fully, permanently,
-irrevocably and unconditionally waives, abandons, and surrenders all of
-Affirmer's Copyright and Related Rights and associated claims and causes
-of action, whether now known or unknown (including existing as well as
-future claims and causes of action), in the Work (i) in all territories
-worldwide, (ii) for the maximum duration provided by applicable law or
-treaty (including future time extensions), (iii) in any current or future
-medium and for any number of copies, and (iv) for any purpose whatsoever,
-including without limitation commercial, advertising or promotional
-purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
-member of the public at large and to the detriment of Affirmer's heirs and
-successors, fully intending that such Waiver shall not be subject to
-revocation, rescission, cancellation, termination, or any other legal or
-equitable action to disrupt the quiet enjoyment of the Work by the public
-as contemplated by Affirmer's express Statement of Purpose.
+# клас спрайту-кулі
+class Bullet(GameSprite):
+    def __init__(self, player_image, player_x, player_y, size_x, size_y, player_speed):
+        # Викликаємо конструктор класу (Sprite):
+        GameSprite.__init__(self, player_image, player_x, player_y, size_x, size_y)
+        self.speed = player_speed
+    #рух ворога
+    def update(self):
+        self.rect.x += self.speed
+        # зникає, якщо дійде до краю екрана
+        if self.rect.x > win_width+10:
+            self.kill()
+  
+#Створюємо віконце
+win_width = 1500
+win_height = 750
+window = display.set_mode((win_width, win_height))
+display.set_caption("Лабіринт")
+back = transform.scale(image.load("forest.jpg"), (win_width, win_height))
 
-3. Public License Fallback. Should any part of the Waiver for any reason
-be judged legally invalid or ineffective under applicable law, then the
-Waiver shall be preserved to the maximum extent permitted taking into
-account Affirmer's express Statement of Purpose. In addition, to the
-extent the Waiver is so judged Affirmer hereby grants to each affected
-person a royalty-free, non transferable, non sublicensable, non exclusive,
-irrevocable and unconditional license to exercise Affirmer's Copyright and
-Related Rights in the Work (i) in all territories worldwide, (ii) for the
-maximum duration provided by applicable law or treaty (including future
-time extensions), (iii) in any current or future medium and for any number
-of copies, and (iv) for any purpose whatsoever, including without
-limitation commercial, advertising or promotional purposes (the
-"License"). The License shall be deemed effective as of the date CC0 was
-applied by Affirmer to the Work. Should any part of the License for any
-reason be judged legally invalid or ineffective under applicable law, such
-partial invalidity or ineffectiveness shall not invalidate the remainder
-of the License, and in such case Affirmer hereby affirms that he or she
-will not (i) exercise any of his or her remaining Copyright and Related
-Rights in the Work or (ii) assert any associated claims and causes of
-action with respect to the Work, in either case contrary to Affirmer's
-express Statement of Purpose.
+#Створюємо групу для стін
+barriers = sprite.Group()
 
-4. Limitations and Disclaimers.
+#створюємо групу для куль
+bullets = sprite.Group()
 
- a. No trademark or patent rights held by Affirmer are waived, abandoned,
-    surrendered, licensed or otherwise affected by this document.
- b. Affirmer offers the Work as-is and makes no representations or
-    warranties of any kind concerning the Work, express, implied,
-    statutory or otherwise, including without limitation warranties of
-    title, merchantability, fitness for a particular purpose, non
-    infringement, or the absence of latent or other defects, accuracy, or
-    the present or absence of errors, whether or not discoverable, all to
-    the greatest extent permissible under applicable law.
- c. Affirmer disclaims responsibility for clearing rights of other persons
-    that may apply to the Work or any use thereof, including without
-    limitation any person's Copyright and Related Rights in the Work.
-    Further, Affirmer disclaims responsibility for obtaining any necessary
-    consents, permissions or other rights required for any use of the
-    Work.
- d. Affirmer understands and acknowledges that Creative Commons is not a
-    party to this document and has no duty or obligation with respect to
-    this CC0 or use of the Work.
+#Створюємо групу для монстрів
+monsters = sprite.Group()
+
+#Створюємо групу для бонусів
+bonus = sprite.Group()
+bonus.add(GameSprite("horcrux_1.png", 200, 300, 40, 40))
+bonus.add(GameSprite("horcrux_2.png", 600, 50, 40, 40))
+bonus.add(GameSprite("horcrux_3.png", 850, 50, 40, 40))
+bonus.add(GameSprite("horcrux_4.png", 850, 700, 40, 40))
+bonus.add(GameSprite("horcrux_5.png", 1400, 550, 40, 40))
+num = 0 #Лічильник бонусів
+
+#Створюємо стіни картинки
+w_v_1 = GameSprite('tree_wall.png', 100, 700, 40, 50)#Вертикальні
+w_v_2 = GameSprite('tree_wall.png', 100, 650, 40, 50)#
+w_v_3 = GameSprite('tree_wall.png', 100, 600, 40, 50)#
+w_v_4 = GameSprite('tree_wall.png', 100, 450, 40, 50)#
+w_v_5 = GameSprite('tree_wall.png', 100, 400, 40, 50)#
+w_v_6 = GameSprite('tree_wall.png', 100, 350, 40, 50)#
+w_v_7 = GameSprite('tree_wall.png', 100, 300, 40, 50)#
+w_v_8 = GameSprite('tree_wall.png', 100, 250, 40, 50)#
+w_v_9 = GameSprite('tree_wall.png', 100, 200, 40, 50)#
+w_v_10 = GameSprite('tree_wall.png', 100, 50, 40, 50)#
+w_v_11 = GameSprite('tree_wall.png', 100, 0, 40, 50)#
+w_v_12 = GameSprite('tree_wall.png', 260, 150, 40, 50)#
+w_v_13 = GameSprite('tree_wall.png', 260, 100, 40, 50)#
+w_v_14 = GameSprite('tree_wall.png', 260, 200, 40, 50)#
+w_v_15 = GameSprite('tree_wall.png', 260, 250, 40, 50)#
+w_v_16 = GameSprite('tree_wall.png', 260, 300, 40, 50)#
+w_v_17 = GameSprite('tree_wall.png', 260, 350, 40, 50)#
+w_v_18 = GameSprite('tree_wall.png', 260, 400, 40, 50)#
+w_v_19 = GameSprite('tree_wall.png', 260, 450, 40, 50)#
+w_v_20 = GameSprite('tree_wall.png', 340, 500, 40, 50)#
+w_v_21 = GameSprite('tree_wall.png', 340, 550, 40, 50)#
+w_v_22 = GameSprite('tree_wall.png', 340, 600, 40, 50)#
+w_v_23 = GameSprite('tree_wall.png', 660, 50, 40, 50)#
+w_v_24 = GameSprite('tree_wall.png', 660, 0, 40, 50)#
+w_v_25 = GameSprite('tree_wall.png', 660, 350, 40, 50)#
+w_v_26 = GameSprite('tree_wall.png', 660, 400, 40, 50)#
+w_v_27 = GameSprite('tree_wall.png', 660, 450, 40, 50)#
+w_v_28 = GameSprite('tree_wall.png', 660, 500, 40, 50)#
+w_v_29 = GameSprite('tree_wall.png', 660, 550, 40, 50)#
+w_v_30 = GameSprite('tree_wall.png', 660, 600, 40, 50)#
+w_v_31 = GameSprite('tree_wall.png', 940, 600, 40, 50)#
+w_v_32 = GameSprite('tree_wall.png', 940, 650, 40, 50)#
+w_v_33 = GameSprite('tree_wall.png', 940, 700, 40, 50)#
+w_v_34 = GameSprite('tree_wall.png', 1020, 600, 40, 50)#
+w_v_35 = GameSprite('tree_wall.png', 1100, 600, 40, 50)#
+w_v_36 = GameSprite('tree_wall.png', 1100, 550, 40, 50)#
+w_v_37 = GameSprite('tree_wall.png', 1100, 500, 40, 50)#
+w_v_38 = GameSprite('tree_wall.png', 1100, 450, 40, 50)#
+w_v_39 = GameSprite('tree_wall.png', 780, 400, 40, 50)#
+w_v_40 = GameSprite('tree_wall.png', 780, 250, 40, 50)#
+w_v_41 = GameSprite('tree_wall.png', 780, 200, 40, 50)#
+w_v_42 = GameSprite('tree_wall.png', 780, 150, 40, 50)#
+w_v_43 = GameSprite('tree_wall.png', 780, 100, 40, 50)#
+w_v_44 = GameSprite('tree_wall.png', 1260, 550, 40, 50)#
+w_v_45 = GameSprite('tree_wall.png', 1260, 500, 40, 50)#
+w_v_46 = GameSprite('tree_wall.png', 1260, 450, 40, 50)#
+w_v_47 = GameSprite('tree_wall.png', 900, 350, 40, 50)#
+w_v_48 = GameSprite('tree_wall.png', 900, 300, 40, 50)#
+w_v_49 = GameSprite('tree_wall.png', 900, 250, 40, 50)#
+w_v_50 = GameSprite('tree_wall.png', 1020, 200, 40, 50)#
+w_v_51 = GameSprite('tree_wall.png', 1020, 150, 40, 50)#
+w_v_52 = GameSprite('tree_wall.png', 1020, 100, 40, 50)#
+w_v_53 = GameSprite('tree_wall.png', 900, 50, 40, 50)#
+w_v_54 = GameSprite('tree_wall.png', 900, 0, 40, 50)#
+
+
+w_h_1 = GameSprite('tree_wall.png', 140, 200, 40, 50)#Горизонтальні
+w_h_2 = GameSprite('tree_wall.png', 180, 200, 40, 50)#
+w_h_3 = GameSprite('tree_wall.png', 220, 200, 40, 50)#
+w_h_4 = GameSprite('tree_wall.png', 260, 200, 40, 50)#
+w_h_5 = GameSprite('tree_wall.png', 300, 100, 40, 50)#
+w_h_6 = GameSprite('tree_wall.png', 340, 100, 40, 50)#
+w_h_7 = GameSprite('tree_wall.png', 380, 100, 40, 50)#
+w_h_8 = GameSprite('tree_wall.png', 300, 450, 40, 50)#
+w_h_9 = GameSprite('tree_wall.png', 340, 450, 40, 50)#
+w_h_10 = GameSprite('tree_wall.png', 300, 600, 40, 50)#
+w_h_11 = GameSprite('tree_wall.png', 260, 600, 40, 50)#
+w_h_12 = GameSprite('tree_wall.png', 300, 300, 40, 50)#
+w_h_13 = GameSprite('tree_wall.png', 340, 300, 40, 50)#
+w_h_14 = GameSprite('tree_wall.png', 380, 300, 40, 50)#
+w_h_15 = GameSprite('tree_wall.png', 420, 300, 40, 50)#
+w_h_16 = GameSprite('tree_wall.png', 460, 300, 40, 50)#
+w_h_17 = GameSprite('tree_wall.png', 500, 300, 40, 50)#
+w_h_18 = GameSprite('tree_wall.png', 540, 300, 40, 50)#
+w_h_19 = GameSprite('tree_wall.png', 580, 300, 40, 50)#
+w_h_20 = GameSprite('tree_wall.png', 620, 300, 40, 50)#
+w_h_21 = GameSprite('tree_wall.png', 660, 300, 40, 50)#
+w_h_22 = GameSprite('tree_wall.png', 500, 100, 40, 50)#
+w_h_23 = GameSprite('tree_wall.png', 540, 100, 40, 50)#
+w_h_24 = GameSprite('tree_wall.png', 580, 100, 40, 50)#
+w_h_25 = GameSprite('tree_wall.png', 620, 100, 40, 50)#
+w_h_26 = GameSprite('tree_wall.png', 660, 100, 40, 50)#
+w_h_27 = GameSprite('tree_wall.png', 500, 700, 40, 50)#
+w_h_28 = GameSprite('tree_wall.png', 500, 650, 40, 50)#
+w_h_29 = GameSprite('tree_wall.png', 500, 600, 40, 50)#
+w_h_30 = GameSprite('tree_wall.png', 500, 550, 40, 50)#
+w_h_31 = GameSprite('tree_wall.png', 500, 500, 40, 50)#
+w_h_32 = GameSprite('tree_wall.png', 500, 450, 40, 50)#
+w_h_33 = GameSprite('tree_wall.png', 700, 600, 40, 50)#
+w_h_34 = GameSprite('tree_wall.png', 740, 600, 40, 50)#
+w_h_35 = GameSprite('tree_wall.png', 780, 600, 40, 50)#
+w_h_36 = GameSprite('tree_wall.png', 820, 600, 40, 50)#
+w_h_37 = GameSprite('tree_wall.png', 1060, 450, 40, 50)#
+w_h_38 = GameSprite('tree_wall.png', 1020, 450, 40, 50)#
+w_h_39 = GameSprite('tree_wall.png', 980, 450, 40, 50)#
+w_h_40 = GameSprite('tree_wall.png', 940, 450, 40, 50)#
+w_h_41 = GameSprite('tree_wall.png', 900, 450, 40, 50)#
+w_h_42 = GameSprite('tree_wall.png', 860, 450, 40, 50)#
+w_h_43 = GameSprite('tree_wall.png', 820, 450, 40, 50)#
+w_h_44 = GameSprite('tree_wall.png', 780, 450, 40, 50)#
+w_h_45 = GameSprite('tree_wall.png', 820, 100, 40, 50)#
+w_h_46 = GameSprite('tree_wall.png', 860, 100, 40, 50)#
+w_h_47 = GameSprite('tree_wall.png', 900, 100, 40, 50)#
+w_h_48 = GameSprite('tree_wall.png', 1260, 600, 40, 50)#
+w_h_49 = GameSprite('tree_wall.png', 1300, 600, 40, 50)#
+w_h_50 = GameSprite('tree_wall.png', 1340, 600, 40, 50)#
+w_h_51 = GameSprite('tree_wall.png', 1380, 600, 40, 50)#
+w_h_52 = GameSprite('tree_wall.png', 1420, 600, 40, 50)#
+w_h_53 = GameSprite('tree_wall.png', 1460, 600, 40, 50)#
+w_h_54 = GameSprite('tree_wall.png', 1500, 600, 40, 50)#
+w_h_55 = GameSprite('tree_wall.png', 940, 250, 40, 50)#
+w_h_56 = GameSprite('tree_wall.png', 980, 250, 40, 50)#
+w_h_57 = GameSprite('tree_wall.png', 1020, 250, 40, 50)#
+w_h_58 = GameSprite('tree_wall.png', 1140, 250, 40, 50)#
+w_h_59 = GameSprite('tree_wall.png', 1180, 250, 40, 50)#
+w_h_60 = GameSprite('tree_wall.png', 1220, 250, 40, 50)#
+w_h_61 = GameSprite('tree_wall.png', 1260, 250, 40, 50)#
+w_h_62 = GameSprite('tree_wall.png', 1300, 250, 40, 50)#
+w_h_63 = GameSprite('tree_wall.png', 1340, 250, 40, 50)#
+w_h_64 = GameSprite('tree_wall.png', 1380, 250, 40, 50)#
+w_h_65 = GameSprite('tree_wall.png', 1420, 250, 40, 50)#
+w_h_66 = GameSprite('tree_wall.png', 1460, 250, 40, 50)#
+w_h_67 = GameSprite('tree_wall.png', 1500, 250, 40, 50)#
+w_h_68 = GameSprite('tree_wall.png', 1060, 100, 40, 50)#
+w_h_69 = GameSprite('tree_wall.png', 1100, 100, 40, 50)#
+w_h_70 = GameSprite('tree_wall.png', 1140, 100, 40, 50)#
+w_h_71 = GameSprite('tree_wall.png', 1180, 100, 40, 50)#
+w_h_72 = GameSprite('tree_wall.png', 1220, 100, 40, 50)#
+w_h_73 = GameSprite('tree_wall.png', 1260, 100, 40, 50)#
+w_h_74 = GameSprite('tree_wall.png', 1300, 100, 40, 50)#
+w_h_75 = GameSprite('tree_wall.png', 1420, 100, 40, 50)#
+w_h_76 = GameSprite('tree_wall.png', 1460, 100, 40, 50)#
+w_h_77 = GameSprite('tree_wall.png', 1500, 100, 40, 50)#
+
+#додаємо стіни до групи
+barriers.add(w_v_1)#Вертикальні стіни 
+barriers.add(w_v_2)#
+barriers.add(w_v_3)#
+barriers.add(w_v_4)#
+barriers.add(w_v_5)#
+barriers.add(w_v_6)#
+barriers.add(w_v_7)#
+barriers.add(w_v_8)#
+barriers.add(w_v_9)#
+barriers.add(w_v_10)#
+barriers.add(w_v_11)#
+barriers.add(w_v_12)#
+barriers.add(w_v_13)#
+barriers.add(w_v_14)#
+barriers.add(w_v_15)#
+barriers.add(w_v_16)#
+barriers.add(w_v_17)#
+barriers.add(w_v_18)#
+barriers.add(w_v_19)#
+barriers.add(w_v_20)#
+barriers.add(w_v_21)#
+barriers.add(w_v_22)#
+barriers.add(w_v_23)#
+barriers.add(w_v_24)#
+barriers.add(w_v_25)#
+barriers.add(w_v_26)#
+barriers.add(w_v_27)#
+barriers.add(w_v_28)#
+barriers.add(w_v_29)#
+barriers.add(w_v_30)#
+barriers.add(w_v_31)#
+barriers.add(w_v_32)#
+barriers.add(w_v_33)#
+barriers.add(w_v_34)#
+barriers.add(w_v_35)#
+barriers.add(w_v_36)#
+barriers.add(w_v_37)#
+barriers.add(w_v_38)#
+barriers.add(w_v_39)#
+barriers.add(w_v_40)#
+barriers.add(w_v_41)#
+barriers.add(w_v_42)#
+barriers.add(w_v_43)#
+barriers.add(w_v_44)#
+barriers.add(w_v_45)#
+barriers.add(w_v_46)#
+barriers.add(w_v_47)#
+barriers.add(w_v_48)#
+barriers.add(w_v_49)#
+barriers.add(w_v_50)#
+barriers.add(w_v_51)#
+barriers.add(w_v_52)#
+barriers.add(w_v_53)#
+barriers.add(w_v_54)#
+
+
+barriers.add(w_h_1)#Горизонтальні стіни
+barriers.add(w_h_2)#
+barriers.add(w_h_3)#
+barriers.add(w_h_4)#
+barriers.add(w_h_5)#
+barriers.add(w_h_6)#
+barriers.add(w_h_7)#
+barriers.add(w_h_8)#
+barriers.add(w_h_9)#
+barriers.add(w_h_10)#
+barriers.add(w_h_11)#
+barriers.add(w_h_12)#
+barriers.add(w_h_13)#
+barriers.add(w_h_14)#
+barriers.add(w_h_15)#
+barriers.add(w_h_16)#
+barriers.add(w_h_17)#
+barriers.add(w_h_18)#
+barriers.add(w_h_19)#
+barriers.add(w_h_20)#
+barriers.add(w_h_21)#
+barriers.add(w_h_22)#
+barriers.add(w_h_23)#
+barriers.add(w_h_24)#
+barriers.add(w_h_25)#
+barriers.add(w_h_26)#
+barriers.add(w_h_27)#
+barriers.add(w_h_28)#
+barriers.add(w_h_29)#
+barriers.add(w_h_30)#
+barriers.add(w_h_31)#
+barriers.add(w_h_32)#
+barriers.add(w_h_33)#
+barriers.add(w_h_34)#
+barriers.add(w_h_35)#
+barriers.add(w_h_36)#
+barriers.add(w_h_37)#
+barriers.add(w_h_38)#
+barriers.add(w_h_39)#
+barriers.add(w_h_40)#
+barriers.add(w_h_41)#
+barriers.add(w_h_42)#
+barriers.add(w_h_43)#
+barriers.add(w_h_44)#
+barriers.add(w_h_45)#
+barriers.add(w_h_46)#
+barriers.add(w_h_47)#
+barriers.add(w_h_48)#
+barriers.add(w_h_49)#
+barriers.add(w_h_50)#
+barriers.add(w_h_51)#
+barriers.add(w_h_52)#
+barriers.add(w_h_53)#
+barriers.add(w_h_54)#
+barriers.add(w_h_55)#
+barriers.add(w_h_56)#
+barriers.add(w_h_57)#
+barriers.add(w_h_58)#
+barriers.add(w_h_59)#
+barriers.add(w_h_60)#
+barriers.add(w_h_61)#
+barriers.add(w_h_62)#
+barriers.add(w_h_63)#
+barriers.add(w_h_64)#
+barriers.add(w_h_65)#
+barriers.add(w_h_66)#
+barriers.add(w_h_67)#
+barriers.add(w_h_68)#
+barriers.add(w_h_69)#
+barriers.add(w_h_70)#
+barriers.add(w_h_71)#
+barriers.add(w_h_72)#
+barriers.add(w_h_73)#
+barriers.add(w_h_74)#
+barriers.add(w_h_75)#
+barriers.add(w_h_76)#
+barriers.add(w_h_77)#
+
+#створюємо спрайти
+packman = Player('Harry_Potter.png', 5, win_height - 80, 60, 60, 0, 0)
+monster1 = Enemy_v('Dementor.png', 700, 200, 80, 80, 10, 200, 400)
+monster2 = Enemy_v('Dementor.png', 160, 350, 80, 80, 10, 350, 600)
+monster3 = Enemy_h('Dementor.png', 400, 220, 80, 80, 10, 400, 600)
+monster4 = Enemy_h('Dementor.png', 0, 120, 80, 80, 10, 0, 200)
+monster5 = Enemy_h('Dementor.png', 320, 370, 80, 80, 10, 320, 600)
+monster6 = Enemy_h('Dementor.png', 1000, 370, 80, 80, 10, 1000, 1400)
+final_sprite = GameSprite('snich.png', 1400, 680, 25, 25)
+
+#додаємо монстра до групи
+monsters.add(monster1)
+monsters.add(monster2)
+monsters.add(monster3)
+monsters.add(monster4)
+monsters.add(monster5)
+monsters.add(monster6)
+
+#змінна, що відповідає за те, як закінчилася гра
+finish = False
+
+#ігровий цикл
+run = True
+while run:
+    #цикл спрацьовує кожну 0.05 секунд
+    time.delay(50)
+        #перебираємо всі події, які могли статися
+    for e in event.get():
+        if e.type == QUIT:
+            run = False
+        elif e.type == KEYDOWN:
+            if e.key == K_LEFT:
+                packman.x_speed = -5
+            elif e.key == K_RIGHT:
+                packman.x_speed = 5
+            elif e.key == K_UP:
+                packman.y_speed = -5
+            elif e.key == K_DOWN:
+                packman.y_speed = 5
+            elif e.key == K_SPACE:
+                packman.fire()
+
+
+        elif e.type == KEYUP:
+            if e.key == K_LEFT:
+                packman.x_speed = 0
+            elif e.key == K_RIGHT:
+                packman.x_speed = 0 
+            elif e.key == K_UP:
+                packman.y_speed = 0
+            elif e.key == K_DOWN:
+                packman.y_speed = 0
+
+#перевірка, що гра ще не завершена
+    if not finish:
+        #оновлюємо фон кожну ітерацію
+        window.blit(back, (0, 0))#зафарбовуємо вікно кольором
+        
+        #запускаємо рухи спрайтів
+        packman.update()
+        bullets.update()
+
+        #оновлюємо їх у новому місці при кожній ітерації циклу
+        packman.reset()
+        #рисуємо стіни 2
+        bullets.draw(window)
+        barriers.draw(window)
+        final_sprite.reset()
+
+        bonus.draw(window)
+        if sprite.spritecollide(packman, bonus, True):
+            num += 1
+
+        sprite.groupcollide(monsters, bullets, True, True)
+        monsters.update()
+        monsters.draw(window)
+        sprite.groupcollide(bullets, barriers, True, False)
+
+        #Перевірка зіткнення героя з ворогом та стінами
+        if sprite.spritecollide(packman, monsters, False):
+            finish = True
+            mixer.music.stop()
+            lose.play()
+            img = image.load('loser.jpg')
+            window.blit(transform.scale(img, (win_width, win_height)), (0, 0))
+
+        if sprite.collide_rect(packman, final_sprite) and num >= 5:
+            finish = True
+            mixer.music.stop()
+            win.play()
+            img = image.load('winner.png')
+            window.blit(transform.scale(img, (win_width, win_height)), (0, 0))
+    
+    display.update()
